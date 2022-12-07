@@ -80,26 +80,36 @@ function setupSparkInstance() {
   echo "Waiting for Docker to finish initializing";
   while true; do
     (sudo docker exec -it spark_spark_1 cat /opt/bitnami/spark/conf/spark-defaults.conf &>/dev/null) && break;
-    echo "Still waiting for Docker to finish initializing";
-    sleep 3;
+    printf ".";
+    # echo "Still waiting for Docker to finish initializing";
+    sleep 1;
   done;
 
   # copy the configuration file and verify its contents
+  echo "";
   echo "Copying the vulnerable Spark configuration to the Docker instance";
-  sudo docker cp spark-defaults.conf spark_spark_1:/opt/bitnami/spark/conf/spark-defaults.conf
-
+  while true; do
+    sudo docker cp spark-defaults.conf spark_spark_1:/opt/bitnami/spark/conf/spark-defaults.conf
+    (sudo docker exec -it spark_spark_1 cat /opt/bitnami/spark/conf/spark-defaults.conf|grep -ia "spark.acls.enable true") && break;
+    printf ".";
+    sleep 1;    
+  done;
+  
   # send graceful shutdown ^C
+  echo "";
   echo "Sending graceful shutdown to the Spark instance";
   sudo screen -S spark-compose -p 0 -X stuff $'\003';
 
   echo "Waiting for the Docker instance to terminate";
   while true; do
     (sudo screen -ls spark-compose|grep -ia "spark-compose" &>/dev/null) || break;
-    echo "Still waiting for the Docker instance to terminate";
-    sleep 3;
+    printf ".";
+    # echo "Still waiting for the Docker instance to terminate";
+    sleep 1;
   done;
 
   # spin up docker instance with vulnerable configuration
+  echo "";
   echo "Restarting the Spark instance with the vulnerable configuration";
   sudo screen -dm -S spark-compose -s /bin/bash docker-compose up;
   cd ${current_dir};
