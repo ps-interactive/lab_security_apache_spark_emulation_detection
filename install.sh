@@ -1,6 +1,6 @@
-#!/bin/bash
+#! /bin/bash
 # global variables
-export http_proxy="";
+export http_proxy="|HTTPPROXY|";
 export install_log="/tmp/lab-install.log";
 export _sites_enabled="/etc/apache2/sites-enabled";
 export _sites_available="/etc/apache2/sites-available";
@@ -345,16 +345,16 @@ EOF
 function installLab() {
   echo "Installing CVE-2022-33891 lab $(date)";
   # avoid hard coding proxy details
-  export http_proxy="${1}";
+  # export http_proxy="${1}";
 
   # check if already installed
   test -f /opt/spark/.complete && (echo "[+] Setup complete" && return 0);
 
-  # check for proxy settings
-  if (! echo ${http_proxy}|grep -iaoP "^\K(http:\/\/[A-Za-z0-9\_\-\:\.\@]+:8888)"&>/dev/null); then
-    echo "Failed to start, missing proxy settings";
-    return 1;
-  fi;
+#  # check for proxy settings
+#  if (! echo ${http_proxy}|grep -iaoP "^\K(http:\/\/[A-Za-z0-9\_\-\:\.\@]+:8888)"&>/dev/null); then
+#    echo "Failed to start, missing proxy settings";
+#    return 1;
+#  fi;
 
   # configure vulnerable spark instance
   echo "Setting up Docker Spark instance";
@@ -371,11 +371,11 @@ function installLab() {
   fi;
 
   echo "Installation complete $(date)";
-  touch /opt/spark/.complete;
-  rm /tmp/cve-setup.sh &>/dev/null;
-  history -c;
+  sudo touch /opt/spark/.complete;
+  sudo rm /tmp/cve-setup.sh &>/dev/null;
+#  history -c;
   return 0;
 }
-
+installLab
 # install the lab
-installLab ${1} 2>&1>> ${install_log};
+# installLab ${1} 2>&1>> ${install_log};
