@@ -1,20 +1,19 @@
 #! /bin/bash
 # global variables
 export http_proxy="|HTTPPROXY|";
-export install_log="/tmp/lab-install.log";
 export _sites_enabled="/etc/apache2/sites-enabled";
 export _sites_available="/etc/apache2/sites-available";
 export _mods_enabled="/etc/apache2/mods-enabled";
 export _mods_available="/etc/apache2/mods-available";
 
-# sudo install apt packages via proxy
+# install apt packages via proxy
 function aptInstall() {
   sudo http_proxy=${http_proxy} apt install ${1} -y || return 1;
   return 0;
 }
 
 # setup the initial docker instance
-function setupSparkContainer() {
+function setupSparkDockerCompose() {
   echo "Running ${FUNCNAME[0]}";
   # install docker and docker compose
   echo "Installing Docker dependencies";
@@ -30,14 +29,13 @@ Environment="HTTP_PROXY=${http_proxy}"
 Environment="HTTPS_PROXY=${http_proxy}"
 Environment="NO_PROXY=localhost,127.0.0.1,::1"
 EOF
-  sudo systemctl daemon-reload &>/dev/null;
-  sudo systemctl restart docker &>/dev/null;
+  sudo systemctl daemon-reload;
+  sudo systemctl restart docker;
   # docker can now pull
 
   # create directory to run spark from
   echo "Creating Spark install directory";
   sudo mkdir /opt/spark &>/dev/null;
-  local current_dir=$PWD;
 
   # create docker compose file using vulnerable spark version 3.1.1 from bitnami
   # port 80 is mapped to internal docker port 8080 running spark
@@ -65,41 +63,49 @@ EOF
 spark.acls.enable true
 EOF
 
+  echo "${FUNCNAME[0]} complete";
+  return 0;
+}
+
+# setup vulnerable spark instance
+function setupSparkInstance() {
+  echo "Running ${FUNCNAME[0]}";
+
   # spin up docker instance
   echo "Initializing Spark instance";
+  local current_dir=$PWD;
   cd /opt/spark && sudo screen -dm -S spark-compose -s /bin/bash docker-compose up;
 
-  # initialize docker to copy vulnerable config
-  echo "Waiting for Docker to finish initializing (this may take a minute)";
+  # spin up docker instance
+  echo "Waiting for Docker to finish initializing";
   while true; do
-    if (sudo docker exec -it spark_spark_1 cat /opt/bitnami/spark/conf/spark-defaults.conf &>/dev/null); then
-      # copy the configuration file
-      printf "\nCopying the vulnerable Spark configuration to the Docker instance\n";
-      sudo docker cp spark-defaults.conf spark_spark_1:/opt/bitnami/spark/conf/spark-defaults.conf
-      # verify the contents before exiting
-      printf "Verifying configuration copied to Docker instance\n";
-      sudo docker exec -it spark_spark_1 cat /opt/bitnami/spark/conf/spark-defaults.conf|
-        grep -ia 'spark.acls.enable true' && break;
-    fi;
+    (sudo docker exec -it spark_spark_1 cat /opt/bitnami/spark/conf/spark-defaults.conf &>/dev/null) && break;
     printf ".";
     # echo "Still waiting for Docker to finish initializing";
-    sleep 0.5s;
+    sleep 1;
   done;
 
-  # send graceful shutdown ^C to restart the screen session
-  printf "\nSending graceful shutdown to the Spark instance\n";
+  # copy the configuration file and verify its contents
+  echo "";
+  echo "Copying the vulnerable Spark configuration to the Docker instance";
+  sudo docker cp spark-defaults.conf spark_spark_1:/opt/bitnami/spark/conf/spark-defaults.conf
+
+  # send graceful shutdown ^C
+  echo "";
+  echo "Sending graceful shutdown to the Spark instance";
   sudo screen -S spark-compose -p 0 -X stuff $'\003';
 
-  echo "Waiting for the Docker instance to terminate (this may take a minute)";
+  echo "Waiting for the Docker instance to terminate";
   while true; do
     (sudo screen -ls spark-compose|grep -ia "spark-compose" &>/dev/null) || break;
     printf ".";
     # echo "Still waiting for the Docker instance to terminate";
-    sleep 0.5s;
+    sleep 1;
   done;
 
   # spin up docker instance with vulnerable configuration
-  printf "\nRestarting the Spark instance with the vulnerable configuration\n";
+  echo "";
+  echo "Restarting the Spark instance with the vulnerable configuration";
   sudo screen -dm -S spark-compose -s /bin/bash docker-compose up;
   cd ${current_dir};
   echo "${FUNCNAME[0]} complete";
@@ -109,6 +115,7 @@ EOF
 # setup apache as reverse proxy
 function setupApacheProxy() {
   echo "Running ${FUNCNAME[0]}";
+
   echo "Installing Apache dependencies";
   aptInstall apache2 &>/dev/null || return 1;
   aptInstall libapache2-mod-security2 &>/dev/null || return 1;
@@ -119,7 +126,7 @@ function setupApacheProxy() {
     sudo cp "/etc/apache2/${_file}" "/etc/apache2/${_file}.orig";
   done;
 
-  echo "Creating ports.conf configuration file for HTTP only";
+  echo "Creating ports.conf configuration file";
   sudo cat << EOF > /etc/apache2/ports.conf
 Listen 0.0.0.0:80
 EOF
@@ -217,12 +224,25 @@ EOF
   done;
   sudo ln -s ${_sites_available}/apache-www.conf ${_sites_enabled}/apache-www.conf;
 
-  echo "Enabling Apache modules";
+  echo "Enabling SSL and proxy modules";
   sudo a2enmod ssl &>/dev/null;
   sudo a2enmod proxy rewrite &>/dev/null;
   sudo a2enmod proxy proxy_http &>/dev/null;
 
-  # setup apache mod-security
+  echo "Enabling HTTP service";
+  sudo systemctl start apache2 &>/dev/null;
+  sudo systemctl enable apache2 &>/dev/null;
+  echo "${FUNCNAME[0]} complete";
+  return 0;
+}
+
+# setup apache mod-security
+function setupModSecurity() {
+  echo "Running ${FUNCNAME[0]}";
+
+  echo "Stopping Apache service";
+  sudo systemctl stop apache2 &>/dev/null;
+
   echo "Configuring ModSecurity for detection only";
   sudo cat << EOF > /etc/modsecurity/modsecurity.conf
 # RULE ENGINE INITIALIZATION
@@ -333,49 +353,33 @@ EOF
 </IfModule>
 EOF
 
-  # start services
-  echo "Enabling HTTP service";
+  echo "Restarting HTTP service";
   sudo systemctl start apache2 &>/dev/null;
-  sudo systemctl enable apache2 &>/dev/null;
   echo "${FUNCNAME[0]} complete";
   return 0;
 }
 
-# install the lab environment
-function installLab() {
-  echo "Installing CVE-2022-33891 lab $(date)";
-  # avoid hard coding proxy details
-  # export http_proxy="${1}";
+# call function to setup apache
+echo "Setting up Apache proxy";
+if (! setupApacheProxy); then
+  echo "Failed to setup Apache proxy";
+fi;
 
-  # check if already installed
-  test -f /opt/spark/.complete && (echo "[+] Setup complete" && return 0);
+# call function to configure mod-security
+echo "Setting up Apache mod-security";
+if (! setupModSecurity); then
+  echo "Failed to setup Apache mod-security";
+fi;
 
-#  # check for proxy settings
-#  if (! echo ${http_proxy}|grep -iaoP "^\K(http:\/\/[A-Za-z0-9\_\-\:\.\@]+:8888)"&>/dev/null); then
-#    echo "Failed to start, missing proxy settings";
-#    return 1;
-#  fi;
+# call function to install docker
+echo "Setting up docker compose";
+if (! setupSparkDockerCompose); then
+  echo "Failed to setup docker compose";
+fi;
 
-  # configure vulnerable spark instance
-  echo "Setting up Docker Spark instance";
-  if (! setupSparkContainer); then
-    echo "Failed to setup Spark instance";
-    return 1;
-  fi;
-
-  # configure reverse apache proxy
-  echo "Setting up Apache proxy";
-  if (! setupApacheProxy); then
-    echo "Failed to setup Apache proxy";
-    return 1;
-  fi;
-
-  echo "Installation complete $(date)";
-  sudo touch /opt/spark/.complete;
-  sudo rm /tmp/cve-setup.sh &>/dev/null;
-#  history -c;
-  return 0;
-}
-installLab
-# install the lab
-# installLab ${1} 2>&1>> ${install_log};
+# call function to configure vulnerable spark instance
+echo "Setting up Docker Spark instance";
+if (! setupSparkInstance); then
+  echo "Failed to setup Spark instance";
+fi;
+echo "Spark setup complete";
