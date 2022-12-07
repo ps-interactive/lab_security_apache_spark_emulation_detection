@@ -88,13 +88,8 @@ function setupSparkInstance() {
   # copy the configuration file and verify its contents
   echo "";
   echo "Copying the vulnerable Spark configuration to the Docker instance";
-  while true; do
-    sudo docker cp spark-defaults.conf spark_spark_1:/opt/bitnami/spark/conf/spark-defaults.conf
-    (sudo docker exec -it spark_spark_1 cat /opt/bitnami/spark/conf/spark-defaults.conf|grep -ia "spark.acls.enable true") && break;
-    printf ".";
-    sleep 1;    
-  done;
-  
+  sudo docker cp spark-defaults.conf spark_spark_1:/opt/bitnami/spark/conf/spark-defaults.conf  
+
   # send graceful shutdown ^C
   echo "";
   echo "Sending graceful shutdown to the Spark instance";
