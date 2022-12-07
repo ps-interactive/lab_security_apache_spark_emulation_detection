@@ -86,7 +86,7 @@ function setupSparkInstance() {
 
   # copy the configuration file and verify its contents
   echo "Copying the vulnerable Spark configuration to the Docker instance";
-  sudo docker cp /opt/spark/spark-defaults.conf spark_spark_1:/opt/bitnami/spark/conf/spark-defaults.conf
+  sudo docker cp spark-defaults.conf spark_spark_1:/opt/bitnami/spark/conf/spark-defaults.conf
 
   # send graceful shutdown ^C
   echo "Sending graceful shutdown to the Spark instance";
