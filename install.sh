@@ -71,24 +71,21 @@ EOF
 
   # initialize docker to copy vulnerable config
   echo "Waiting for Docker to finish initializing (this may take a minute)";
-  for ((i=0; i<=20; i++)); do
+  for ((i=0; i<=60; i++)); do
     sudo docker cp spark-defaults.conf spark_spark_1:/opt/bitnami/spark/conf/spark-defaults.conf &>/dev/null;
-    sudo docker exec -it spark_spark_1 cat /opt/bitnami/spark/conf/spark-defaults.conf|grep -ia 'spark.acls.enable true' && break;
-    printf ".";
-    # echo "Still waiting for Docker to finish initializing";
-    sleep 1;
+    (sudo docker exec -it spark_spark_1 cat /opt/bitnami/spark/conf/spark-defaults.conf|grep -ia 'spark.acls.enable true')&& break;
+    printf "."; sleep 1;
   done;
 
   # send graceful shutdown ^C to restart the screen session
   printf "\nSending graceful shutdown to the Spark instance\n";
   sudo screen -S spark-compose -p 0 -X stuff $'\003';
+  sleep 3;
 
   echo "Waiting for the Docker instance to terminate (this may take a minute)";
-  for ((i=0; i<=20; i++)); do
+  for ((i=0; i<=60; i++)); do
     (sudo screen -ls spark-compose|grep -ia "spark-compose" &>/dev/null) || break;
-    printf ".";
-    # echo "Still waiting for the Docker instance to terminate";
-    sleep 1;
+    printf "."; sleep 1;
   done;
 
   # spin up docker instance with vulnerable configuration
