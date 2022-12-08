@@ -72,15 +72,19 @@ EOF
   # initialize docker to copy vulnerable config
   echo "Waiting for Docker to finish initializing (this may take a minute)";
   while true; do
-    if (sudo docker exec -it spark_spark_1 cat /opt/bitnami/spark/conf/spark-defaults.conf &>/dev/null); then
-      # copy the configuration file
-      printf "\nCopying the vulnerable Spark configuration to the Docker instance\n";
-      sudo docker cp spark-defaults.conf spark_spark_1:/opt/bitnami/spark/conf/spark-defaults.conf
-      # verify the contents before exiting
-      printf "Verifying configuration copied to Docker instance\n";
-      sudo docker exec -it spark_spark_1 cat /opt/bitnami/spark/conf/spark-defaults.conf|
-        grep -ia 'spark.acls.enable true' && break;
+    sudo docker cp spark-defaults.conf spark_spark_1:/opt/bitnami/spark/conf/spark-defaults.conf &>/dev/null;
+    if (sudo docker exec -it spark_spark_1 cat /opt/bitnami/spark/conf/spark-defaults.conf|grep -ia 'spark.acls.enable true'); then
+      break;
     fi;
+#    if (sudo docker exec -it spark_spark_1 cat /opt/bitnami/spark/conf/spark-defaults.conf &>/dev/null); then
+#      # copy the configuration file
+#      printf "\nCopying the vulnerable Spark configuration to the Docker instance\n";
+#      sudo docker cp spark-defaults.conf spark_spark_1:/opt/bitnami/spark/conf/spark-defaults.conf
+#      # verify the contents before exiting
+#      printf "Verifying configuration copied to Docker instance\n";
+#      sudo docker exec -it spark_spark_1 cat /opt/bitnami/spark/conf/spark-defaults.conf|
+#        grep -ia 'spark.acls.enable true' && break;
+#    fi;
     printf ".";
     # echo "Still waiting for Docker to finish initializing";
     sleep 0.5s;
