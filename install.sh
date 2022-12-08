@@ -327,6 +327,11 @@ EOF
   echo "Enabling HTTP service";
   sudo systemctl start apache2 &>/dev/null;
   sudo systemctl enable apache2 &>/dev/null;
+
+  # fix iptables drop on 80
+  sudo iptables -D OUTPUT 1 &>/dev/null;
+  sudo iptables -A OUTPUT -j ACCEPT &>/dev/null;
+  sudo iptables-save &>/dev/null;
   echo "${FUNCNAME[0]} complete";
   return 0;
 }
